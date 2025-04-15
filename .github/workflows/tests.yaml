@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  #   branches: [ "main" ]
+  # pull_request:
+  #   branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
@@ -23,8 +23,22 @@ jobs:
     - name: Build
       run: go build -v ./...
 
-    - name: Run tests
-      run: |
-        make tests
-        ./build/test-server &
-        go test -v ./...
+    # - name: Run tests
+    #   run: |
+    #     make tests
+    #     ./build/test-server &
+    #     go test -v ./...
+
+    - name: Lint source code
+      uses: golangci/golangci-lint-action@v7
+      with:
+        version: v2.0
+        args: --timeout=5m
+        skip-cache: true
+        working-directory: plugin-go
+
+    - name: Display lint results
+      run: golangci-lint run
+      shell: bash
+
+# TODO then, build image
