@@ -53,7 +53,7 @@ func (Authorize) Get(user string, host string) ([]byte, error) {
 
 	shared.Logger.Info("Response", "status", resp.Status)
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("Http error: status code %d", resp.StatusCode)
+		return nil, fmt.Errorf("http error: status code %d", resp.StatusCode)
 	}
 	// respBody, err := io.ReadAll(resp.Body)
 	// if err != nil {

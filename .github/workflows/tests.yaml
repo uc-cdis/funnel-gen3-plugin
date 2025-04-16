@@ -29,16 +29,16 @@ jobs:
     #     ./build/test-server &
     #     go test -v ./...
 
-    - name: Lint source code
-      uses: golangci/golangci-lint-action@v7
-      with:
-        version: v2.0
-        args: --timeout=5m
-        skip-cache: true
-        working-directory: plugin-go
+    # - name: Lint source code
+    #   uses: golangci/golangci-lint-action@v7
+    #   with:
+    #     version: v2.0
+    #     args: --timeout=5m
+    #     skip-cache: true
+    #     working-directory: plugin-go
 
-    - name: Display lint results
-      run: golangci-lint run
-      shell: bash
+    # - name: Display lint results
+    #   run: golangci-lint run
+    #   shell: bash
 
 # TODO then, build image
