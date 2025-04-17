@@ -10,7 +10,7 @@ import (
 
 	"example.com/shared"
 	"github.com/hashicorp/go-plugin"
-	// "github.com/ohsu-comp-bio/funnel/config"
+	"github.com/ohsu-comp-bio/funnel/config"
 )
 
 // Here is a real implementation of Authorize that retrieves a "Secret" value for a user
@@ -26,13 +26,13 @@ func (Authorize) Get(user string, host string) ([]byte, error) {
 		return nil, fmt.Errorf("user is required (e.g. ./authorize <USER> <HOST>)")
 	}
 
-	// TODO get client creds and fence url from config (likely can't use revproxy since fence
-	// runs in a different namespace)
 	// The OIDC client was created in Gen3 with:
 	// `fence-create client-create --client CLIENT_NAME --grant-types client_credentials`
-	// c := config.Config{}
-	clientId := "a"     // c.clientId
-	clientSecret := "b" // c.clientSecret
+	conf := config.Config{}
+	// TODO get client creds and fence url from plugin config (likely can't use revproxy since fence
+	// runs in a different namespace)
+	clientId := conf.GenericS3[0].Key
+	clientSecret := conf.GenericS3[0].Secret
 	gen3FenceUrl := "https://pauline.planx-pla.net/user"
 
 	httpClient := &http.Client{Timeout: 10 * time.Second}
