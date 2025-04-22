@@ -20,10 +20,10 @@ type AccessTokenResponse struct {
 	AccessToken string `json:"access_token"`
 }
 
-func (Authorize) Get(user string, host string) ([]byte, error) {
+func (Authorize) Get(userId string, host string) ([]byte, error) {
 	// Funnel gets `user` from the TES task "User" tag
-	if user == "" {
-		return nil, fmt.Errorf("user is required (e.g. ./authorize <USER> <HOST>)")
+	if userId == "" {
+		return nil, fmt.Errorf("userId is required (e.g. ./authorize <USER>)")
 	}
 
 	// The OIDC client was created in Gen3 with:
@@ -66,7 +66,8 @@ func (Authorize) Get(user string, host string) ([]byte, error) {
 		return nil, fmt.Errorf("could not parse response body: %v", err)
 	}
 	shared.Logger.Info("Response", "body", accessTokenResponse)
-	return []byte(accessTokenResponse.AccessToken), nil
+	shared.Logger.Info("Response", "userId", userId)
+	return []byte(accessTokenResponse.AccessToken + ";userId=" + userId), nil
 }
 
 func main() {
