@@ -13,11 +13,11 @@ RUN go mod download
 # Copy the source code into the container
 COPY . .
 
-RUN mkdir -p ./build/plugins
+RUN mkdir -p ./build/plugins-go
 
 # Build the Go app (CLI)
 # Helpful for testing + debugging
 RUN go build -o ./build/cli .
 
 # Build the plugin
-RUN go build -o ./build/plugins/authorizer ./plugin-go
+RUN go build -o ./build/plugins-go/authorizer ./plugin-go

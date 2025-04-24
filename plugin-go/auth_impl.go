@@ -10,11 +10,18 @@ import (
 
 	"example.com/shared"
 	"github.com/hashicorp/go-plugin"
-	"github.com/ohsu-comp-bio/funnel/config"
 )
 
 // Here is a real implementation of Authorize that retrieves a "Secret" value for a user
 type Authorize struct{}
+
+// The OIDC client was created in Gen3 with:
+// `fence-create client-create --client CLIENT_NAME --grant-types client_credentials`
+type PluginConfig struct {
+	OidcTokenUrl     string `json:"oidc_token_url"`
+	OidcClientId     string `json:"oidc_client_id"`
+	OidcClientSecret string `json:"oidc_client_secret"`
+}
 
 type AccessTokenResponse struct {
 	AccessToken string `json:"access_token"`
@@ -26,25 +33,20 @@ func (Authorize) Get(userId string, host string, jsonConfig string) ([]byte, err
 		return nil, fmt.Errorf("userId is required (e.g. ./authorize <USER>)")
 	}
 
-	shared.Logger.Info("Response", "jsonConfig=", jsonConfig)
-	// The OIDC client was created in Gen3 with:
-	// `fence-create client-create --client CLIENT_NAME --grant-types client_credentials`
-	conf := config.Config{}
-	// TODO get client creds and fence url from plugin config (likely can't use revproxy since fence
-	// runs in a different namespace)
-	shared.Logger.Info("Response", "config=", conf)
-	shared.Logger.Info("Response", "GenericS3=", conf.GenericS3)
-	clientId := conf.GenericS3[0].Key
-	shared.Logger.Info("Response", "clientId=", clientId)
-	clientSecret := conf.GenericS3[0].Secret
-	gen3FenceUrl := "https://pauline.planx-pla.net/user"
+	pluginConfig := PluginConfig{}
+	err := json.Unmarshal([]byte(jsonConfig), &pluginConfig)
+	if nil != err {
+		return nil, fmt.Errorf("unable to parse JSON configuration: %w", err)
+	}
+	shared.Logger.Info("Configuration", "OidcTokenUrl", pluginConfig.OidcTokenUrl)
+	shared.Logger.Info("Configuration", "OidcClientId", pluginConfig.OidcClientId)
 
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	body, _ := json.Marshal(map[string]string{
 		"scope": "openid user",
 	})
-	auth := base64.StdEncoding.EncodeToString([]byte(clientId + ":" + clientSecret))
-	req, err := http.NewRequest("POST", gen3FenceUrl+"/oauth2/token?grant_type=client_credentials", bytes.NewBuffer(body))
+	auth := base64.StdEncoding.EncodeToString([]byte(pluginConfig.OidcClientId + ":" + pluginConfig.OidcClientSecret))
+	req, err := http.NewRequest("POST", pluginConfig.OidcTokenUrl+"/oauth2/token?grant_type=client_credentials", bytes.NewBuffer(body))
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
@@ -55,7 +57,7 @@ func (Authorize) Get(userId string, host string, jsonConfig string) ([]byte, err
 	}
 	defer resp.Body.Close()
 
-	shared.Logger.Info("Response", "status", resp.Status)
+	shared.Logger.Info("Token request", "status", resp.Status)
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("http error: status code %d", resp.StatusCode)
 	}
@@ -69,8 +71,17 @@ func (Authorize) Get(userId string, host string, jsonConfig string) ([]byte, err
 	if err != nil {
 		return nil, fmt.Errorf("could not parse response body: %v", err)
 	}
-	shared.Logger.Info("Response", "body", accessTokenResponse)
-	shared.Logger.Info("Response", "userId", userId)
+	shared.Logger.Info("Response", "cred", accessTokenResponse.AccessToken+";userId="+userId)
+	shared.Logger.Info("Response", "cred bytes", []byte(accessTokenResponse.AccessToken+";userId="+userId))
+
+	var resp shared.Response
+	err = json.Unmarshal([]byte(rawResp), &resp)
+	if err != nil {
+		return nil, fmt.Errorf("within plugin code, failed to parse plugin response: %w", err)
+	}
+	shared.Logger.Info("Response", "parsed resp Message", resp.Message)
+	shared.Logger.Info("Response", "parsed resp Config", resp.Config)
+
 	return []byte(accessTokenResponse.AccessToken + ";userId=" + userId), nil
 }
 
