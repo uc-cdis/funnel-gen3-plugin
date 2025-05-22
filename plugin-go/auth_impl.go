@@ -5,14 +5,17 @@ import (
 	"encoding/base64"
 	"encoding/gob"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/plugins/proto"
 	"github.com/ohsu-comp-bio/funnel/plugins/shared"
+	"github.com/uc-cdis/go-authutils/authutils"
 
 	"github.com/hashicorp/go-plugin"
 	"github.com/ohsu-comp-bio/funnel/tes"
@@ -20,77 +23,127 @@ import (
 
 type Authorize struct{}
 
-// The OIDC client was created in Gen3 with:
-// `fence-create client-create --client CLIENT_NAME --grant-types client_credentials`
-type PluginConfig struct {
-	S3Url            string
-	OidcTokenUrl     string
-	OidcClientId     string
-	OidcClientSecret string
-}
-
 type AccessTokenResponse struct {
 	AccessToken string `json:"access_token"`
 }
 
-func (a Authorize) PluginAction(params map[string]string, headers map[string]*proto.StringList, configuration *config.Config, task *tes.Task, taskType proto.Type) (*proto.JobResponse, error) {
-	pluginConfig := PluginConfig{}
-	ok := true
-	pluginConfig.S3Url, ok = params["s3_url"]
-	if !ok || pluginConfig.S3Url == "" {
-		return &proto.JobResponse{
-				Code:    400,
-				Message: "s3_url is required in params"},
-			fmt.Errorf("s3_url is required in params")
-	}
-	pluginConfig.OidcTokenUrl, ok = params["oidc_token_url"]
-	if !ok || pluginConfig.OidcTokenUrl == "" {
-		return &proto.JobResponse{
-				Code:    400,
-				Message: "oidc_token_url is required in params"},
-			fmt.Errorf("oidc_token_url is required in params")
-	}
-	pluginConfig.OidcClientId, ok = params["oidc_client_id"]
-	if !ok || pluginConfig.OidcClientId == "" {
-		return &proto.JobResponse{
-				Code:    400,
-				Message: "oidc_client_id is required in params"},
-			fmt.Errorf("oidc_client_id is required in params")
-	}
-	pluginConfig.OidcClientSecret, ok = params["oidc_client_secret"]
-	if !ok || pluginConfig.OidcClientSecret == "" {
-		return &proto.JobResponse{
-				Code:    400,
-				Message: "oidc_client_secret is required in params"},
-			fmt.Errorf("oidc_client_secret is required in params")
-	}
-	shared.Logger.Info("Configuration", "S3Url", pluginConfig.S3Url)
-	shared.Logger.Info("Configuration", "OidcTokenUrl", pluginConfig.OidcTokenUrl)
-	shared.Logger.Info("Configuration", "OidcClientId", pluginConfig.OidcClientId)
+func getUserIdFromToken(token string) (string, error) {
+	// This function was copied and adapted from arborist
+	// https://github.com/uc-cdis/arborist/blob/2025.05/arborist/token.go#L16
 
-	authHeader, ok := headers["authorization"]
-	if !ok || authHeader == nil || len(authHeader.Values) == 0 {
+	missingRequiredField := func(field string) error {
+		msg := fmt.Sprintf(
+			"failed to decode token: missing required field `%s`",
+			field,
+		)
+		return errors.New(msg)
+	}
+	fieldTypeError := func(field string) error {
+		msg := fmt.Sprintf(
+			"failed to decode token: field `%s` has wrong type",
+			field,
+		)
+		return errors.New(msg)
+	}
+
+	jwtApp := authutils.NewJWTApplication("http://fence-service/.well-known/jwks")
+	claims, err := jwtApp.Decode(token)
+	if err != nil {
+		return "", fmt.Errorf("error decoding token: %w", err)
+	}
+	scopes := []string{"openid"}
+	expected := &authutils.Expected{Scopes: scopes}
+
+	// TODO comment - allow not validating expiration in Validate()
+	(*claims)["exp"] = time.Now().Unix() + 60
+
+	err = expected.Validate(claims)
+	if err != nil {
+		return "", fmt.Errorf("error decoding token: %w", err)
+	}
+	userIdInterface, exists := (*claims)["sub"]
+	if !exists {
+		return "", missingRequiredField("sub")
+	}
+	userId, casted := userIdInterface.(string)
+	if !casted {
+		return "", fieldTypeError("sub")
+	}
+
+	return userId, nil
+}
+
+func (a Authorize) PluginAction(params map[string]string, headers map[string]*proto.StringList, configuration *config.Config, task *tes.Task, taskType proto.Type) (*proto.JobResponse, error) {
+	// get the plugin configuration
+	// The OIDC client should be created in Gen3 with:
+	// `fence-create client-create --client CLIENT_NAME --grant-types client_credentials`
+	S3Url, ok := params["S3Url"]
+	if !ok || S3Url == "" {
+		return &proto.JobResponse{
+				Code:    400,
+				Message: "S3Url is required in params"},
+			fmt.Errorf("S3Url is required in params")
+	}
+	OidcTokenUrl, ok := params["OidcTokenUrl"]
+	if !ok || OidcTokenUrl == "" {
+		return &proto.JobResponse{
+				Code:    400,
+				Message: "OidcTokenUrl is required in params"},
+			fmt.Errorf("OidcTokenUrl is required in params")
+	}
+	OidcClientId, ok := params["OidcClientId"]
+	if !ok || OidcClientId == "" {
+		return &proto.JobResponse{
+				Code:    400,
+				Message: "OidcClientId is required in params"},
+			fmt.Errorf("OidcClientId is required in params")
+	}
+	OidcClientSecret, ok := params["OidcClientSecret"]
+	if !ok || OidcClientSecret == "" {
+		return &proto.JobResponse{
+				Code:    400,
+				Message: "OidcClientSecret is required in params"},
+			fmt.Errorf("OidcClientSecret is required in params")
+	}
+	shared.Logger.Info("Configuration", "S3Url", S3Url)
+	shared.Logger.Info("Configuration", "OidcTokenUrl", OidcTokenUrl)
+	shared.Logger.Info("Configuration", "OidcClientId", OidcClientId)
+
+	// get the user's access token from the headers
+	authHeaders, ok := headers["authorization"]
+	if !ok || authHeaders == nil || len(authHeaders.Values) == 0 {
 		return &proto.JobResponse{
 				Code:    400,
 				Message: "Authorization header is required"},
 			fmt.Errorf("Authorization header is required")
 	}
-	user := authHeader.Values[0]
-	if user == "" {
+	authHeader := authHeaders.Values[0]
+	if authHeader == "" {
 		return &proto.JobResponse{
 				Code:    400,
-				Message: "user is required in the Auth header"},
-			fmt.Errorf("user is required in the Auth header")
+				Message: "Authorization header is required"},
+			fmt.Errorf("Authorization header is required")
 	}
-	shared.Logger.Info("Header", "user", user)
+
+	// validate the user's token and extract the user ID
+	userJWT := strings.TrimPrefix(authHeader, "Bearer ")
+	userJWT = strings.TrimPrefix(userJWT, "bearer ")
+	userId, err := getUserIdFromToken(userJWT)
+	if err != nil {
+		return &proto.JobResponse{
+				Code:    401,
+				Message: fmt.Sprintf("unable to parse token: %w", err)},
+			fmt.Errorf("unable to parse token: %w", err)
+	}
 
 	// exchange the OIDC client ID and secret for an access token
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	body, _ := json.Marshal(map[string]string{
 		"scope": "openid user",
 	})
-	auth := base64.StdEncoding.EncodeToString([]byte(pluginConfig.OidcClientId + ":" + pluginConfig.OidcClientSecret))
-	req, err := http.NewRequest("POST", pluginConfig.OidcTokenUrl+"/oauth2/token?grant_type=client_credentials", bytes.NewBuffer(body))
+	auth := base64.StdEncoding.EncodeToString([]byte(OidcClientId + ":" + OidcClientSecret))
+	// TODO try again replacing external URL with fence-service
+	req, err := http.NewRequest("POST", OidcTokenUrl+"/oauth2/token?grant_type=client_credentials", bytes.NewBuffer(body))
 	if err != nil {
 		return &proto.JobResponse{
 				Code:    500,
@@ -126,8 +179,8 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 		configuration.AmazonS3.Disabled = true
 		configuration.GenericS3 = []*config.GenericS3Storage{
 			{
-				Endpoint: pluginConfig.S3Url,
-				Key:      accessTokenResponse.AccessToken + ";userId=" + user, // TODO
+				Endpoint: S3Url,
+				Key:      accessTokenResponse.AccessToken + ";userId=" + userId,
 				Secret:   "N/A",
 				Bucket:   "gen3wf-pauline-planx-pla-net-16", // TODO
 				Region:   "us-east-1",                       // TODO
