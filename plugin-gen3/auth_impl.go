@@ -32,7 +32,7 @@ type StorageInfoResponse struct {
 	Region string `json:"region"`
 }
 
-func validateAndGetUserIdFromToken(token string) (string, error) {
+func validateTokenAndExtractUserId(token string) (string, error) {
 	// This function was copied and adapted from arborist
 	// https://github.com/uc-cdis/arborist/blob/2025.05/arborist/token.go#L16
 
@@ -59,10 +59,6 @@ func validateAndGetUserIdFromToken(token string) (string, error) {
 	scopes := []string{"openid"}
 	expected := &authutils.Expected{Scopes: scopes}
 
-	// TODO comment - allow not validating expiration in Validate()
-	// actually idk? if this is only called at task creation it should be valid
-	// (*claims)["exp"] = time.Now().Unix() + 60
-
 	err = expected.Validate(claims)
 	if err != nil {
 		return "", fmt.Errorf("error decoding token: %w", err)
@@ -87,7 +83,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	}
 	if taskType != proto.Type_CREATE {
 		return &proto.JobResponse{
-				Code:    400,
+				Code:    http.StatusBadRequest,
 				Message: fmt.Sprintf("unsupported task type: %v", taskType),
 			},
 			fmt.Errorf("unsupported task type: %v", taskType)
@@ -99,7 +95,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	S3Url, ok := params["S3Url"]
 	if !ok || S3Url == "" {
 		return &proto.JobResponse{
-				Code:    400,
+				Code:    http.StatusBadRequest,
 				Message: "S3Url is required in params",
 			},
 			fmt.Errorf("S3Url is required in params")
@@ -107,7 +103,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	OidcClientId, ok := params["OidcClientId"]
 	if !ok || OidcClientId == "" {
 		return &proto.JobResponse{
-				Code:    400,
+				Code:    http.StatusBadRequest,
 				Message: "OidcClientId is required in params",
 			},
 			fmt.Errorf("OidcClientId is required in params")
@@ -115,7 +111,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	OidcClientSecret, ok := params["OidcClientSecret"]
 	if !ok || OidcClientSecret == "" {
 		return &proto.JobResponse{
-				Code:    400,
+				Code:    http.StatusBadRequest,
 				Message: "OidcClientSecret is required in params",
 			},
 			fmt.Errorf("OidcClientSecret is required in params")
@@ -127,7 +123,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	authHeaders, ok := headers["authorization"]
 	if !ok || authHeaders == nil || len(authHeaders.Values) == 0 {
 		return &proto.JobResponse{
-				Code:    400,
+				Code:    http.StatusBadRequest,
 				Message: "Authorization header is required",
 			},
 			fmt.Errorf("Authorization header is required")
@@ -135,7 +131,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	authHeader := authHeaders.Values[0]
 	if authHeader == "" {
 		return &proto.JobResponse{
-				Code:    400,
+				Code:    http.StatusBadRequest,
 				Message: "Authorization header is required",
 			},
 			fmt.Errorf("Authorization header is required")
@@ -144,10 +140,10 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	// validate the user's token and extract the user ID
 	userJWT := strings.TrimPrefix(authHeader, "Bearer ")
 	userJWT = strings.TrimPrefix(userJWT, "bearer ")
-	userId, err := validateAndGetUserIdFromToken(userJWT)
+	userId, err := validateTokenAndExtractUserId(userJWT)
 	if err != nil {
 		return &proto.JobResponse{
-				Code:    401,
+				Code:    http.StatusUnauthorized,
 				Message: fmt.Sprintf("unable to parse token: %w", err),
 			},
 			fmt.Errorf("unable to parse token: %w", err)
@@ -159,7 +155,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return &proto.JobResponse{
-				Code:    500,
+				Code:    http.StatusInternalServerError,
 				Message: fmt.Sprintf("error creating HTTP request to '%s': %w", url, err),
 			},
 			fmt.Errorf("error creating HTTP request to '%s': %w", url, err)
@@ -168,13 +164,13 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return &proto.JobResponse{
-				Code:    500,
+				Code:    http.StatusInternalServerError,
 				Message: fmt.Sprintf("error making HTTP request to '%s': %w", url, err),
 			},
 			fmt.Errorf("error making HTTP request to '%s': %w", url, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return &proto.JobResponse{
 				Code:    int64(resp.StatusCode),
 				Message: fmt.Sprintf("http error from '%s': status code %d", url, resp.StatusCode),
@@ -185,7 +181,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	err = json.NewDecoder(resp.Body).Decode(storageInfoResponse)
 	if err != nil {
 		return &proto.JobResponse{
-				Code:    500,
+				Code:    http.StatusInternalServerError,
 				Message: fmt.Sprintf("could not parse '%s' response body: %w", url, err),
 			},
 			fmt.Errorf("could not parse '%s' response body: %w", url, err)
@@ -201,7 +197,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	req, err = http.NewRequest("POST", url, bytes.NewBuffer(body))
 	if err != nil {
 		return &proto.JobResponse{
-				Code:    500,
+				Code:    http.StatusInternalServerError,
 				Message: fmt.Sprintf("error creating HTTP request to '%s': %w", url, err),
 			},
 			fmt.Errorf("error creating HTTP request to '%s': %w", url, err)
@@ -211,13 +207,13 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	resp, err = httpClient.Do(req)
 	if err != nil {
 		return &proto.JobResponse{
-				Code:    500,
+				Code:    http.StatusInternalServerError,
 				Message: fmt.Sprintf("error making HTTP request to '%s': %w", url, err),
 			},
 			fmt.Errorf("error making HTTP request to '%s': %w", url, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return &proto.JobResponse{
 				Code:    int64(resp.StatusCode),
 				Message: fmt.Sprintf("http error from '%s': status code %d", url, resp.StatusCode),
@@ -228,7 +224,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	err = json.NewDecoder(resp.Body).Decode(accessTokenResponse)
 	if err != nil {
 		return &proto.JobResponse{
-				Code:    500,
+				Code:    http.StatusInternalServerError,
 				Message: fmt.Sprintf("could not parse '%s' response body: %w", url, err),
 			},
 			fmt.Errorf("could not parse '%s' response body: %w", url, err)
