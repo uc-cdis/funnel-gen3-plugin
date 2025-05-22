@@ -20,4 +20,4 @@ RUN mkdir -p ./build/plugins-go
 RUN go build -o ./build/cli .
 
 # Build the plugin
-RUN go build -o ./build/plugins-go/authorizer ./plugin-go
+RUN go build -o ./build/plugins-go/authorizer ./plugin-gen3
