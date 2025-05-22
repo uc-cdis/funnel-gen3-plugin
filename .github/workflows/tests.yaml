@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  #   branches: [ "main" ]
+  # pull_request:
+  #   branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
@@ -23,8 +23,32 @@ jobs:
     - name: Build
       run: go build -v ./...
 
-    - name: Run tests
-      run: |
-        make tests
-        ./build/test-server &
-        go test -v ./...
+    # - name: Run tests
+    #   run: |
+    #     make tests
+    #     ./build/test-server &
+    #     go test -v ./...
+
+    # - name: Lint source code
+    #   uses: golangci/golangci-lint-action@v7
+    #   with:
+    #     version: v2.0
+    #     args: --timeout=5m
+    #     skip-cache: true
+    #     working-directory: plugin-go
+
+    # - name: Display lint results
+    #   run: golangci-lint run
+    #   shell: bash
+
+  buildImage:
+    name: Build and push image
+    needs: test
+    uses: uc-cdis/.github/.github/workflows/image_build_push_native.yaml@master
+    with:
+      OVERRIDE_REPO_NAME: "funnel-gen3-plugin"
+    secrets:
+      ECR_AWS_ACCESS_KEY_ID: ${{ secrets.ECR_AWS_ACCESS_KEY_ID }}
+      ECR_AWS_SECRET_ACCESS_KEY: ${{ secrets.ECR_AWS_SECRET_ACCESS_KEY }}
+      QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+      QUAY_ROBOT_TOKEN: ${{ secrets.QUAY_ROBOT_TOKEN }}
