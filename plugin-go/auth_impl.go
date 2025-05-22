@@ -27,7 +27,12 @@ type AccessTokenResponse struct {
 	AccessToken string `json:"access_token"`
 }
 
-func getUserIdFromToken(token string) (string, error) {
+type StorageInfoResponse struct {
+	Bucket string `json:"bucket"`
+	Region string `json:"region"`
+}
+
+func validateAndGetUserIdFromToken(token string) (string, error) {
 	// This function was copied and adapted from arborist
 	// https://github.com/uc-cdis/arborist/blob/2025.05/arborist/token.go#L16
 
@@ -82,10 +87,10 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	}
 	if taskType != proto.Type_CREATE {
 		return &proto.JobResponse{
-			Code:    400,
-			Message: fmt.Sprintf("unsupported task type: %v", taskType)
-		},
-		fmt.Errorf("unsupported task type: %v", taskType)
+				Code:    400,
+				Message: fmt.Sprintf("unsupported task type: %v", taskType),
+			},
+			fmt.Errorf("unsupported task type: %v", taskType)
 	}
 
 	// get the plugin configuration
@@ -94,120 +99,151 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	S3Url, ok := params["S3Url"]
 	if !ok || S3Url == "" {
 		return &proto.JobResponse{
-			Code:    400,
-			Message: "S3Url is required in params"
-		},
-		fmt.Errorf("S3Url is required in params")
-	}
-	OidcTokenUrl, ok := params["OidcTokenUrl"]
-	if !ok || OidcTokenUrl == "" {
-		return &proto.JobResponse{
-			Code:    400,
-			Message: "OidcTokenUrl is required in params"
-		},
-		fmt.Errorf("OidcTokenUrl is required in params")
+				Code:    400,
+				Message: "S3Url is required in params",
+			},
+			fmt.Errorf("S3Url is required in params")
 	}
 	OidcClientId, ok := params["OidcClientId"]
 	if !ok || OidcClientId == "" {
 		return &proto.JobResponse{
-			Code:    400,
-			Message: "OidcClientId is required in params"
-		},
-		fmt.Errorf("OidcClientId is required in params")
+				Code:    400,
+				Message: "OidcClientId is required in params",
+			},
+			fmt.Errorf("OidcClientId is required in params")
 	}
 	OidcClientSecret, ok := params["OidcClientSecret"]
 	if !ok || OidcClientSecret == "" {
 		return &proto.JobResponse{
-			Code:    400,
-			Message: "OidcClientSecret is required in params"
-		},
-		fmt.Errorf("OidcClientSecret is required in params")
+				Code:    400,
+				Message: "OidcClientSecret is required in params",
+			},
+			fmt.Errorf("OidcClientSecret is required in params")
 	}
 	shared.Logger.Info("Configuration", "S3Url", S3Url)
-	shared.Logger.Info("Configuration", "OidcTokenUrl", OidcTokenUrl)
 	shared.Logger.Info("Configuration", "OidcClientId", OidcClientId)
 
 	// get the user's access token from the headers
 	authHeaders, ok := headers["authorization"]
 	if !ok || authHeaders == nil || len(authHeaders.Values) == 0 {
 		return &proto.JobResponse{
-			Code:    400,
-			Message: "Authorization header is required"
-		},
-		fmt.Errorf("Authorization header is required")
+				Code:    400,
+				Message: "Authorization header is required",
+			},
+			fmt.Errorf("Authorization header is required")
 	}
 	authHeader := authHeaders.Values[0]
 	if authHeader == "" {
 		return &proto.JobResponse{
-			Code:    400,
-			Message: "Authorization header is required"
-		},
-		fmt.Errorf("Authorization header is required")
+				Code:    400,
+				Message: "Authorization header is required",
+			},
+			fmt.Errorf("Authorization header is required")
 	}
 
 	// validate the user's token and extract the user ID
 	userJWT := strings.TrimPrefix(authHeader, "Bearer ")
 	userJWT = strings.TrimPrefix(userJWT, "bearer ")
-	userId, err := getUserIdFromToken(userJWT)
+	userId, err := validateAndGetUserIdFromToken(userJWT)
 	if err != nil {
 		return &proto.JobResponse{
-			Code:    401,
-			Message: fmt.Sprintf("unable to parse token: %w", err)
-		},
-		fmt.Errorf("unable to parse token: %w", err)
+				Code:    401,
+				Message: fmt.Sprintf("unable to parse token: %w", err),
+			},
+			fmt.Errorf("unable to parse token: %w", err)
 	}
 
-	// exchange the OIDC client ID and secret for an access token
+	// get the S3 bucket and region for this user
 	httpClient := &http.Client{Timeout: 10 * time.Second}
+	url := "http://gen3-workflow-service/storage/info"
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return &proto.JobResponse{
+				Code:    500,
+				Message: fmt.Sprintf("error creating HTTP request to '%s': %w", url, err),
+			},
+			fmt.Errorf("error creating HTTP request to '%s': %w", url, err)
+	}
+	req.Header.Add("Authorization", "bearer "+userJWT)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return &proto.JobResponse{
+				Code:    500,
+				Message: fmt.Sprintf("error making HTTP request to '%s': %w", url, err),
+			},
+			fmt.Errorf("error making HTTP request to '%s': %w", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return &proto.JobResponse{
+				Code:    int64(resp.StatusCode),
+				Message: fmt.Sprintf("http error from '%s': status code %d", url, resp.StatusCode),
+			},
+			fmt.Errorf("http error from '%s': status code %d", url, resp.StatusCode)
+	}
+	storageInfoResponse := new(StorageInfoResponse)
+	err = json.NewDecoder(resp.Body).Decode(storageInfoResponse)
+	if err != nil {
+		return &proto.JobResponse{
+				Code:    500,
+				Message: fmt.Sprintf("could not parse '%s' response body: %w", url, err),
+			},
+			fmt.Errorf("could not parse '%s' response body: %w", url, err)
+	}
+	shared.Logger.Info("Storage info", "Bucket", storageInfoResponse.Bucket)
+	shared.Logger.Info("Storage info", "Region", storageInfoResponse.Region)
+
+	// exchange the OIDC client ID and secret for an access token
 	body, _ := json.Marshal(map[string]string{
 		"scope": "openid user",
 	})
+	url = "http://fence-service/oauth2/token?grant_type=client_credentials"
+	req, err = http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		return &proto.JobResponse{
+				Code:    500,
+				Message: fmt.Sprintf("error creating HTTP request to '%s': %w", url, err),
+			},
+			fmt.Errorf("error creating HTTP request to '%s': %w", url, err)
+	}
 	auth := base64.StdEncoding.EncodeToString([]byte(OidcClientId + ":" + OidcClientSecret))
-	// TODO try again replacing external URL with fence-service
-	req, err := http.NewRequest("POST", OidcTokenUrl+"/oauth2/token?grant_type=client_credentials", bytes.NewBuffer(body))
-	if err != nil {
-		return &proto.JobResponse{
-			Code:    500,
-			Message: fmt.Sprintf("error creating HTTP request: %w", err)
-		},
-		fmt.Errorf("error creating HTTP request: %w", err)
-	}
 	req.Header.Add("Authorization", "Basic "+auth)
-	tokenResp, err := httpClient.Do(req)
+	resp, err = httpClient.Do(req)
 	if err != nil {
 		return &proto.JobResponse{
-			Code:    500,
-			Message: fmt.Sprintf("error making HTTP request: %w", err)
-		},
-		fmt.Errorf("error making HTTP request: %w", err)
+				Code:    500,
+				Message: fmt.Sprintf("error making HTTP request to '%s': %w", url, err),
+			},
+			fmt.Errorf("error making HTTP request to '%s': %w", url, err)
 	}
-	defer tokenResp.Body.Close()
-	if tokenResp.StatusCode != 200 {
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
 		return &proto.JobResponse{
-			Code:    int64(tokenResp.StatusCode),
-			Message: fmt.Sprintf("http error: status code %d", tokenResp.StatusCode)
-		},
-		fmt.Errorf("http error: status code %d", tokenResp.StatusCode)
+				Code:    int64(resp.StatusCode),
+				Message: fmt.Sprintf("http error from '%s': status code %d", url, resp.StatusCode),
+			},
+			fmt.Errorf("http error from '%s': status code %d", url, resp.StatusCode)
 	}
 	accessTokenResponse := new(AccessTokenResponse)
-	err = json.NewDecoder(tokenResp.Body).Decode(accessTokenResponse)
+	err = json.NewDecoder(resp.Body).Decode(accessTokenResponse)
 	if err != nil {
 		return &proto.JobResponse{
-			Code:    500,
-			Message: fmt.Sprintf("could not parse response body: %w", err)
-		},
-		fmt.Errorf("could not parse response body: %w", err)
+				Code:    500,
+				Message: fmt.Sprintf("could not parse '%s' response body: %w", url, err),
+			},
+			fmt.Errorf("could not parse '%s' response body: %w", url, err)
 	}
 
 	// generate and return the worker configuration
 	configuration.AmazonS3.Disabled = true
 	configuration.GenericS3 = []*config.GenericS3Storage{
 		{
+			Disabled: false,
 			Endpoint: S3Url,
 			Key:      accessTokenResponse.AccessToken + ";userId=" + userId,
 			Secret:   "N/A",
-			Bucket:   "gen3wf-pauline-planx-pla-net-16", // TODO
-			Region:   "us-east-1",                       // TODO
+			Bucket:   storageInfoResponse.Bucket,
+			Region:   storageInfoResponse.Region,
 		},
 	}
 	return &proto.JobResponse{Code: http.StatusOK, Config: configuration, Task: task}, nil
