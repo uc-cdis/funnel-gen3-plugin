@@ -116,8 +116,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 			},
 			fmt.Errorf("OidcClientSecret is required in params")
 	}
-	shared.Logger.Info("Configuration", "S3Url", S3Url)
-	shared.Logger.Info("Configuration", "OidcClientId", OidcClientId)
+	shared.Logger.Info("Configuration", "S3Url", S3Url, "OidcClientId", OidcClientId)
 
 	// get the user's access token from the headers
 	authHeaders, ok := headers["authorization"]
@@ -186,8 +185,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 			},
 			fmt.Errorf("could not parse '%s' response body: %w", url, err)
 	}
-	shared.Logger.Info("Storage info", "Bucket", storageInfoResponse.Bucket)
-	shared.Logger.Info("Storage info", "Region", storageInfoResponse.Region)
+	shared.Logger.Info("User's storage", "Bucket", storageInfoResponse.Bucket, "Region", storageInfoResponse.Region)
 
 	// exchange the OIDC client ID and secret for an access token
 	body, _ := json.Marshal(map[string]string{
