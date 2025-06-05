@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -166,11 +167,16 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 		return errorResponse(http.StatusInternalServerError, fmt.Sprintf("error making HTTP request to '%s': %w", url, err))
 	}
 	defer resp.Body.Close()
+
+	bodyStringBuilder := new(strings.Builder)
+	_, err = io.Copy(bodyStringBuilder, resp.Body)
+	bodyString := bodyStringBuilder.String()
 	if resp.StatusCode != http.StatusOK {
-		return errorResponse(int64(resp.StatusCode), fmt.Sprintf("http error from '%s': status code %d", url, resp.StatusCode))
+		shared.Logger.Info("Error", "url", url, "Status", resp.Status, "body", bodyString)
+		return errorResponse(int64(resp.StatusCode), fmt.Sprintf("http error from '%s': status code %d; details: %s", url, resp.StatusCode, bodyString))
 	}
 	accessTokenResponse := new(AccessTokenResponse)
-	err = json.NewDecoder(resp.Body).Decode(accessTokenResponse)
+	err = json.Unmarshal([]byte(bodyString), &accessTokenResponse)
 	if err != nil {
 		return errorResponse(http.StatusInternalServerError, fmt.Sprintf("could not parse '%s' response body: %w", url, err))
 	}
