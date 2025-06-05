@@ -74,6 +74,17 @@ func validateTokenAndExtractUserId(token string) (string, error) {
 	return userId, nil
 }
 
+func errorResponse(code int64, msg string) (*proto.JobResponse, error) {
+	// returning `nil` instead of the actual error here, because this response is parsed upstream
+	// and a 500 is returned if the error is anything else than `nil`. The actual error code is
+	// parsed from `JobResponse.code` instead.
+	return &proto.JobResponse{
+			Code:    code,
+			Message: msg,
+		},
+		nil
+}
+
 func (a Authorize) PluginAction(params map[string]string, headers map[string]*proto.StringList, configuration *config.Config, task *tes.Task, taskType proto.Type) (*proto.JobResponse, error) {
 	// only proceed for task creation events. The worker config does not need to be updated for
 	// other types of events
@@ -81,11 +92,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 		return &proto.JobResponse{Code: http.StatusOK, Config: configuration, Task: task}, nil
 	}
 	if taskType != proto.Type_CREATE {
-		return &proto.JobResponse{
-				Code:    http.StatusBadRequest,
-				Message: fmt.Sprintf("unsupported task type: %v", taskType),
-			},
-			nil
+		return errorResponse(http.StatusBadRequest, fmt.Sprintf("unsupported task type: %v", taskType))
 	}
 
 	// get the plugin configuration
@@ -93,46 +100,26 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	// `fence-create client-create --client CLIENT_NAME --grant-types client_credentials`
 	S3Url, ok := params["S3Url"]
 	if !ok || S3Url == "" {
-		return &proto.JobResponse{
-				Code:    http.StatusBadRequest,
-				Message: "S3Url is required in params",
-			},
-			nil
+		return errorResponse(http.StatusBadRequest, "S3Url is required in params")
 	}
 	OidcClientId, ok := params["OidcClientId"]
 	if !ok || OidcClientId == "" {
-		return &proto.JobResponse{
-				Code:    http.StatusBadRequest,
-				Message: "OidcClientId is required in params",
-			},
-			nil
+		return errorResponse(http.StatusBadRequest, "OidcClientId is required in params")
 	}
 	OidcClientSecret, ok := params["OidcClientSecret"]
 	if !ok || OidcClientSecret == "" {
-		return &proto.JobResponse{
-				Code:    http.StatusBadRequest,
-				Message: "OidcClientSecret is required in params",
-			},
-			nil
+		return errorResponse(http.StatusBadRequest, "OidcClientSecret is required in params")
 	}
 	shared.Logger.Info("Configuration", "S3Url", S3Url, "OidcClientId", OidcClientId)
 
 	// get the user's access token from the headers
 	authHeaders, ok := headers["authorization"]
 	if !ok || authHeaders == nil || len(authHeaders.Values) == 0 {
-		return &proto.JobResponse{
-				Code:    http.StatusBadRequest,
-				Message: "Authorization header is required",
-			},
-			nil
+		return errorResponse(http.StatusBadRequest, "Authorization header is required")
 	}
 	authHeader := authHeaders.Values[0]
 	if authHeader == "" {
-		return &proto.JobResponse{
-				Code:    http.StatusBadRequest,
-				Message: "Authorization header is required",
-			},
-			nil
+		return errorResponse(http.StatusBadRequest, "Authorization header is required")
 	}
 
 	// validate the user's token and extract the user ID
@@ -140,11 +127,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	userJWT = strings.TrimPrefix(userJWT, "bearer ")
 	userId, err := validateTokenAndExtractUserId(userJWT)
 	if err != nil {
-		return &proto.JobResponse{
-				Code:    http.StatusUnauthorized,
-				Message: fmt.Sprintf("unable to parse token: %w", err),
-			},
-			nil
+		return errorResponse(http.StatusUnauthorized, fmt.Sprintf("unable to parse token: %w", err))
 	}
 
 	// get the S3 bucket and region for this user
@@ -152,37 +135,21 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	url := "http://gen3-workflow-service/storage/info"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return &proto.JobResponse{
-				Code:    http.StatusInternalServerError,
-				Message: fmt.Sprintf("error creating HTTP request to '%s': %w", url, err),
-			},
-			nil
+		return errorResponse(http.StatusInternalServerError, fmt.Sprintf("error creating HTTP request to '%s': %w", url, err))
 	}
 	req.Header.Add("Authorization", "bearer "+userJWT)
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return &proto.JobResponse{
-				Code:    http.StatusInternalServerError,
-				Message: fmt.Sprintf("error making HTTP request to '%s': %w", url, err),
-			},
-			nil
+		return errorResponse(http.StatusInternalServerError, fmt.Sprintf("error making HTTP request to '%s': %w", url, err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return &proto.JobResponse{
-				Code:    int64(resp.StatusCode),
-				Message: fmt.Sprintf("http error from '%s': status code %d", url, resp.StatusCode),
-			},
-			nil
+		return errorResponse(int64(resp.StatusCode), fmt.Sprintf("http error from '%s': status code %d", url, resp.StatusCode))
 	}
 	storageInfoResponse := new(StorageInfoResponse)
 	err = json.NewDecoder(resp.Body).Decode(storageInfoResponse)
 	if err != nil {
-		return &proto.JobResponse{
-				Code:    http.StatusInternalServerError,
-				Message: fmt.Sprintf("could not parse '%s' response body: %w", url, err),
-			},
-			nil
+		return errorResponse(http.StatusInternalServerError, fmt.Sprintf("could not parse '%s' response body: %w", url, err))
 	}
 	shared.Logger.Info("User's storage", "Bucket", storageInfoResponse.Bucket, "Region", storageInfoResponse.Region)
 
@@ -190,38 +157,22 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	url = "http://fence-service/oauth2/token?grant_type=client_credentials&scope=openid"
 	req, err = http.NewRequest("POST", url, nil)
 	if err != nil {
-		return &proto.JobResponse{
-				Code:    http.StatusInternalServerError,
-				Message: fmt.Sprintf("error creating HTTP request to '%s': %w", url, err),
-			},
-			nil
+		return errorResponse(http.StatusInternalServerError, fmt.Sprintf("error creating HTTP request to '%s': %w", url, err))
 	}
 	auth := base64.StdEncoding.EncodeToString([]byte(OidcClientId + ":" + OidcClientSecret))
 	req.Header.Add("Authorization", "Basic "+auth)
 	resp, err = httpClient.Do(req)
 	if err != nil {
-		return &proto.JobResponse{
-				Code:    http.StatusInternalServerError,
-				Message: fmt.Sprintf("error making HTTP request to '%s': %w", url, err),
-			},
-			nil
+		return errorResponse(http.StatusInternalServerError, fmt.Sprintf("error making HTTP request to '%s': %w", url, err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return &proto.JobResponse{
-				Code:    int64(resp.StatusCode),
-				Message: fmt.Sprintf("http error from '%s': status code %d", url, resp.StatusCode),
-			},
-			nil
+		return errorResponse(int64(resp.StatusCode), fmt.Sprintf("http error from '%s': status code %d", url, resp.StatusCode))
 	}
 	accessTokenResponse := new(AccessTokenResponse)
 	err = json.NewDecoder(resp.Body).Decode(accessTokenResponse)
 	if err != nil {
-		return &proto.JobResponse{
-				Code:    http.StatusInternalServerError,
-				Message: fmt.Sprintf("could not parse '%s' response body: %w", url, err),
-			},
-			nil
+		return errorResponse(http.StatusInternalServerError, fmt.Sprintf("could not parse '%s' response body: %w", url, err))
 	}
 
 	// generate and return the worker configuration
