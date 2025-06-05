@@ -85,7 +85,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 				Code:    http.StatusBadRequest,
 				Message: fmt.Sprintf("unsupported task type: %v", taskType),
 			},
-			fmt.Errorf("unsupported task type: %v", taskType)
+			nil
 	}
 
 	// get the plugin configuration
@@ -97,7 +97,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 				Code:    http.StatusBadRequest,
 				Message: "S3Url is required in params",
 			},
-			fmt.Errorf("S3Url is required in params")
+			nil
 	}
 	OidcClientId, ok := params["OidcClientId"]
 	if !ok || OidcClientId == "" {
@@ -105,7 +105,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 				Code:    http.StatusBadRequest,
 				Message: "OidcClientId is required in params",
 			},
-			fmt.Errorf("OidcClientId is required in params")
+			nil
 	}
 	OidcClientSecret, ok := params["OidcClientSecret"]
 	if !ok || OidcClientSecret == "" {
@@ -113,7 +113,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 				Code:    http.StatusBadRequest,
 				Message: "OidcClientSecret is required in params",
 			},
-			fmt.Errorf("OidcClientSecret is required in params")
+			nil
 	}
 	shared.Logger.Info("Configuration", "S3Url", S3Url, "OidcClientId", OidcClientId)
 
@@ -124,7 +124,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 				Code:    http.StatusBadRequest,
 				Message: "Authorization header is required",
 			},
-			fmt.Errorf("Authorization header is required")
+			nil
 	}
 	authHeader := authHeaders.Values[0]
 	if authHeader == "" {
@@ -132,7 +132,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 				Code:    http.StatusBadRequest,
 				Message: "Authorization header is required",
 			},
-			fmt.Errorf("Authorization header is required")
+			nil
 	}
 
 	// validate the user's token and extract the user ID
@@ -144,7 +144,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 				Code:    http.StatusUnauthorized,
 				Message: fmt.Sprintf("unable to parse token: %w", err),
 			},
-			fmt.Errorf("unable to parse token: %w", err)
+			nil
 	}
 
 	// get the S3 bucket and region for this user
@@ -156,7 +156,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 				Code:    http.StatusInternalServerError,
 				Message: fmt.Sprintf("error creating HTTP request to '%s': %w", url, err),
 			},
-			fmt.Errorf("error creating HTTP request to '%s': %w", url, err)
+			nil
 	}
 	req.Header.Add("Authorization", "bearer "+userJWT)
 	resp, err := httpClient.Do(req)
@@ -165,7 +165,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 				Code:    http.StatusInternalServerError,
 				Message: fmt.Sprintf("error making HTTP request to '%s': %w", url, err),
 			},
-			fmt.Errorf("error making HTTP request to '%s': %w", url, err)
+			nil
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -173,7 +173,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 				Code:    int64(resp.StatusCode),
 				Message: fmt.Sprintf("http error from '%s': status code %d", url, resp.StatusCode),
 			},
-			fmt.Errorf("http error from '%s': status code %d", url, resp.StatusCode)
+			nil
 	}
 	storageInfoResponse := new(StorageInfoResponse)
 	err = json.NewDecoder(resp.Body).Decode(storageInfoResponse)
@@ -182,7 +182,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 				Code:    http.StatusInternalServerError,
 				Message: fmt.Sprintf("could not parse '%s' response body: %w", url, err),
 			},
-			fmt.Errorf("could not parse '%s' response body: %w", url, err)
+			nil
 	}
 	shared.Logger.Info("User's storage", "Bucket", storageInfoResponse.Bucket, "Region", storageInfoResponse.Region)
 
@@ -194,7 +194,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 				Code:    http.StatusInternalServerError,
 				Message: fmt.Sprintf("error creating HTTP request to '%s': %w", url, err),
 			},
-			fmt.Errorf("error creating HTTP request to '%s': %w", url, err)
+			nil
 	}
 	auth := base64.StdEncoding.EncodeToString([]byte(OidcClientId + ":" + OidcClientSecret))
 	req.Header.Add("Authorization", "Basic "+auth)
@@ -204,7 +204,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 				Code:    http.StatusInternalServerError,
 				Message: fmt.Sprintf("error making HTTP request to '%s': %w", url, err),
 			},
-			fmt.Errorf("error making HTTP request to '%s': %w", url, err)
+			nil
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -212,7 +212,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 				Code:    int64(resp.StatusCode),
 				Message: fmt.Sprintf("http error from '%s': status code %d", url, resp.StatusCode),
 			},
-			fmt.Errorf("http error from '%s': status code %d", url, resp.StatusCode)
+			nil
 	}
 	accessTokenResponse := new(AccessTokenResponse)
 	err = json.NewDecoder(resp.Body).Decode(accessTokenResponse)
@@ -221,7 +221,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 				Code:    http.StatusInternalServerError,
 				Message: fmt.Sprintf("could not parse '%s' response body: %w", url, err),
 			},
-			fmt.Errorf("could not parse '%s' response body: %w", url, err)
+			nil
 	}
 
 	// generate and return the worker configuration
