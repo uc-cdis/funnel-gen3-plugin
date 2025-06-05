@@ -185,7 +185,8 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 			Secret:   "N/A",
 			Bucket:   storageInfoResponse.Bucket,
 			Region:   storageInfoResponse.Region,
-			KmsKeyID: "eac09700-c493-48f9-b8c3-0d7629910a76", // TODO get from API
+			// TODO get KmsKeyID from API
+			// KmsKeyID: "", // TODO decryption doesn't work yet
 		},
 	}
 	return &proto.JobResponse{Code: http.StatusOK, Config: configuration, Task: task}, nil
