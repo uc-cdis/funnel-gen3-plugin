@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/gob"
 	"encoding/json"
@@ -188,11 +187,8 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	shared.Logger.Info("User's storage", "Bucket", storageInfoResponse.Bucket, "Region", storageInfoResponse.Region)
 
 	// exchange the OIDC client ID and secret for an access token
-	body, _ := json.Marshal(map[string]string{
-		"scope": "openid user",
-	})
-	url = "http://fence-service/oauth2/token?grant_type=client_credentials"
-	req, err = http.NewRequest("POST", url, bytes.NewBuffer(body))
+	url = "http://fence-service/oauth2/token?grant_type=client_credentials&scope=openid"
+	req, err = http.NewRequest("POST", url, nil)
 	if err != nil {
 		return &proto.JobResponse{
 				Code:    http.StatusInternalServerError,
