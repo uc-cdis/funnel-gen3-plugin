@@ -87,6 +87,7 @@ func errorResponse(code int64, msg string) (*proto.JobResponse, error) {
 }
 
 func (a Authorize) PluginAction(params map[string]string, headers map[string]*proto.StringList, configuration *config.Config, task *tes.Task, taskType proto.Type) (*proto.JobResponse, error) {
+	return errorResponse(403, "Testing error response propagation")
 	// only proceed for task creation events. The worker config does not need to be updated for
 	// other types of events
 	if taskType == proto.Type_GET || taskType == proto.Type_CANCEL {
@@ -191,7 +192,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 			Secret:   "N/A",
 			Bucket:   storageInfoResponse.Bucket,
 			Region:   storageInfoResponse.Region,
-			KmsKeyID: "eac09700-c493-48f9-b8c3-0d7629910a76", // TODO get from API
+			// KmsKeyID: "eac09700-c493-48f9-b8c3-0d7629910a76", // TODO get from API
 		},
 	}
 	return &proto.JobResponse{Code: http.StatusOK, Config: configuration, Task: task}, nil
