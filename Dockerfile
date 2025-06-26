@@ -1,5 +1,5 @@
 # Use the official Golang image as the base image
-FROM golang:1.23-alpine
+FROM golang:1.24.2-alpine
 
 # Set the Current Working Directory inside the container
 WORKDIR /app
@@ -13,11 +13,11 @@ RUN go mod download
 # Copy the source code into the container
 COPY . .
 
-RUN mkdir -p ./build/plugins-go
+RUN mkdir -p ./build/plugins
 
 # Build the Go app (CLI)
 # Helpful for testing + debugging
 RUN go build -o ./build/cli .
 
 # Build the plugin
-RUN go build -o ./build/plugins-go/authorizer ./plugin-gen3
+RUN go build -o ./build/plugins/authorizer ./plugin-gen3
