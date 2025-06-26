@@ -154,7 +154,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	shared.Logger.Info("User's storage", "Bucket", storageInfoResponse.Bucket, "Region", storageInfoResponse.Region)
 
 	// exchange the OIDC client ID and secret for an access token
-	url = "http://fence-service/oauth2/token?grant_type=client_credentials&scope=openid user"
+	url = "http://fence-service/oauth2/token?grant_type=client_credentials&scope=openid%20user"
 	req, err = http.NewRequest("POST", url, nil)
 	if err != nil {
 		return errorResponse(http.StatusInternalServerError, fmt.Sprintf("error creating HTTP request to '%s': %w", url, err))
