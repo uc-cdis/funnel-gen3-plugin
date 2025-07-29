@@ -53,7 +53,7 @@ func validateTokenAndExtractUserId(token string) (string, error) {
 	jwtApp := authutils.NewJWTApplication("http://fence-service/.well-known/jwks")
 	claims, err := jwtApp.Decode(token)
 	if err != nil {
-		return "", fmt.Errorf("error decoding token: %w", err)
+		return "", fmt.Errorf("error decoding token: %w. Token : %s", err, token)
 	}
 	scopes := []string{"openid"}
 	expected := &authutils.Expected{Scopes: scopes}
