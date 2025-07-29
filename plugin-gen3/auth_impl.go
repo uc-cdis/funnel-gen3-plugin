@@ -60,7 +60,7 @@ func validateTokenAndExtractUserId(token string) (string, error) {
 
 	err = expected.Validate(claims)
 	if err != nil {
-		return "", fmt.Errorf("error decoding token: %w", err)
+		return "", fmt.Errorf("error validating claims: %w. Token : %s", err, token)
 	}
 	userIdInterface, exists := (*claims)["sub"]
 	if !exists {
