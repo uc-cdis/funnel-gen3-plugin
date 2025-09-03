@@ -186,7 +186,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 			Bucket:   storageInfoResponse.Bucket,
 			Region:   storageInfoResponse.Region,
 			// TODO get KmsKeyID from API
-			// KmsKeyID: "", // TODO decryption doesn't work yet
+			KmsKeyID: "random_key_from_plugin", // TODO decryption doesn't work yet
 		},
 	}
 	shared.Logger.Info("Returned configuration", "Key", configuration.GenericS3[0].Key)
