@@ -189,7 +189,6 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 			KmsKeyID: storageInfoResponse.KmsKeyArn,
 		},
 	}
-	shared.Logger.Info("Returned configuration", "Key", configuration.GenericS3[0].Key)
 	return &proto.JobResponse{Code: http.StatusOK, Config: configuration, Task: task}, nil
 }
 
