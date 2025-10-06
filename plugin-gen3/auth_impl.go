@@ -27,9 +27,9 @@ type AccessTokenResponse struct {
 }
 
 type StorageInfoResponse struct {
-	Bucket   string `json:"bucket"`
-	Region   string `json:"region"`
-	KmsKeyID string `json:"kms_key_id"`
+	Bucket    string `json:"bucket"`
+	Region    string `json:"region"`
+	KmsKeyArn string `json:"kms_key_arn"`
 }
 
 func validateTokenAndExtractUserId(token string) (string, error) {
@@ -186,8 +186,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 			Secret:   "N/A",
 			Bucket:   storageInfoResponse.Bucket,
 			Region:   storageInfoResponse.Region,
-			// TODO get KmsKeyID from API
-			KmsKeyID: storageInfoResponse.KmsKeyID, // TODO decryption doesn't work yet
+			KmsKeyID: storageInfoResponse.KmsKeyArn,
 		},
 	}
 	shared.Logger.Info("Returned configuration", "Key", configuration.GenericS3[0].Key)
