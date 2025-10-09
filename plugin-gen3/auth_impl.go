@@ -27,8 +27,9 @@ type AccessTokenResponse struct {
 }
 
 type StorageInfoResponse struct {
-	Bucket string `json:"bucket"`
-	Region string `json:"region"`
+	Bucket    string `json:"bucket"`
+	Region    string `json:"region"`
+	KmsKeyArn string `json:"kms_key_arn"`
 }
 
 func validateTokenAndExtractUserId(token string) (string, error) {
@@ -185,8 +186,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 			Secret:   "N/A",
 			Bucket:   storageInfoResponse.Bucket,
 			Region:   storageInfoResponse.Region,
-			// TODO get KmsKeyID from API
-			// KmsKeyID: "", // TODO decryption doesn't work yet
+			KmsKeyID: storageInfoResponse.KmsKeyArn,
 		},
 	}
 	return &proto.JobResponse{Code: http.StatusOK, Config: configuration, Task: task}, nil
