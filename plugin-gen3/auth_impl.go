@@ -176,8 +176,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 		return errorResponse(http.StatusInternalServerError, fmt.Sprintf("could not parse '%s' response body: %w", url, err))
 	}
 	Shared.Logger.Info("Printing task tags", "Tags", task.Tags)
-    if "funnel_worker_role_arn" in task.Tags {
-		workerRoleArn := task.Tags["funnel_worker_role_arn"]
+	if workerRoleArn, ok := task.Tags["funnel_worker_role_arn"]; ok {
 		shared.Logger.Info("Using worker role arn from task tags", "funnel_worker_role_arn", workerRoleArn)
 	}
 	// generate and return the worker configuration
