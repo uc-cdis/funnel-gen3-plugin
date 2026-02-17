@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -145,7 +146,8 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return errorResponse(int64(resp.StatusCode), fmt.Sprintf("http error from '%s': status code %d", url, resp.StatusCode))
+		body, _ := io.ReadAll(resp.Body)
+		return errorResponse(int64(resp.StatusCode), fmt.Sprintf("http error from '%s': status code %d, body: %s", url, resp.StatusCode, string(body)))
 	}
 	storageInfoResponse := new(StorageInfoResponse)
 	err = json.NewDecoder(resp.Body).Decode(storageInfoResponse)
@@ -168,7 +170,8 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return errorResponse(int64(resp.StatusCode), fmt.Sprintf("http error from '%s': status code %d", url, resp.StatusCode))
+		body, _ := io.ReadAll(resp.Body)
+		return errorResponse(int64(resp.StatusCode), fmt.Sprintf("http error from '%s': status code %d, body: %s", url, resp.StatusCode, string(body)))
 	}
 	accessTokenResponse := new(AccessTokenResponse)
 	err = json.NewDecoder(resp.Body).Decode(accessTokenResponse)
