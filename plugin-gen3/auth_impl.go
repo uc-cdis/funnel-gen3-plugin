@@ -162,7 +162,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	if err != nil {
 		return errorResponse(http.StatusInternalServerError, fmt.Sprintf("error creating HTTP request to '%s': %w", url, err))
 	}
-	auth := base64.StdEncoding.EncodeToString([]byte(OidcClientId + ":" + OidcClientSecret))
+	auth := base64.StdEncoding.EncodeToString([]byte("OidcClientId" + ":" + OidcClientSecret))
 	req.Header.Add("Authorization", "Basic "+auth)
 	resp, err = httpClient.Do(req)
 	if err != nil {
