@@ -134,7 +134,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 
 	// get the S3 bucket and region for this user
 	httpClient := &http.Client{Timeout: 10 * time.Second}
-	url := "http://gen3-workflow-service/storage/info"
+	url := "http://gen3-workflow-service/storage/setup"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return errorResponse(http.StatusInternalServerError, fmt.Sprintf("error creating HTTP request to '%s': %w", url, err))
