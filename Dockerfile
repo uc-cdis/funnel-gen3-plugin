@@ -1,5 +1,5 @@
 # Use the official Golang image as the base image
-FROM golang:1.24.2-alpine
+FROM golang:1.25.9-alpine
 
 # Set the Current Working Directory inside the container
 WORKDIR /app
