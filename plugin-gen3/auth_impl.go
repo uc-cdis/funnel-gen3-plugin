@@ -192,6 +192,27 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 			KmsKeyID: storageInfoResponse.KmsKeyArn,
 		},
 	}
+
+	shared.Logger.Info("DEBUG: task.Tags", "task.Tags", task.Tags)
+	configuration.Kubernetes.NodeSelector = map[string]string{"role": "workflow"}
+	configuration.Kubernetes.Tolerations = []*config.Toleration{
+		{
+			Key:      "role",
+			Operator: "Equal",
+			Value:    "workflow",
+			Effect:   "NoSchedule",
+		},
+	}
+	// configuration.Kubernetes.NodeSelector = map[string]string{"role": "gpu"}
+	// configuration.Kubernetes.Tolerations = []*config.Toleration{
+	// 	{
+	// 		Key:      "nvidia.com/gpu",
+	// 		Operator: "Equal",
+	// 		Value:    "present",
+	// 		Effect:   "NoSchedule",
+	// 	},
+	// }
+
 	return &proto.JobResponse{Code: http.StatusOK, Config: configuration, Task: task}, nil
 }
 
