@@ -193,25 +193,42 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 		},
 	}
 
-	shared.Logger.Info("DEBUG: task.Tags", "task.Tags", task.Tags)
-	configuration.Kubernetes.NodeSelector = map[string]string{"role": "workflow"}
-	configuration.Kubernetes.Tolerations = []*config.Toleration{
-		{
-			Key:      "role",
-			Operator: "Equal",
-			Value:    "workflow",
-			Effect:   "NoSchedule",
-		},
+	// parse internal tags into the appropriate configuration
+	nodeSelector, ok := task.Tags["_NODE_SELECTOR"]
+	if ok {
+		// _NODE_SELECTOR expected format: "role:workflow"
+		key, value, ok := strings.Cut(nodeSelector, ":")
+		if !ok {
+			return errorResponse(http.StatusInternalServerError, fmt.Sprintf("invalid _NODE_SELECTOR format: '%s'", nodeSelector))
+		}
+		configuration.Kubernetes.NodeSelector = map[string]string{key: value}
 	}
-	// configuration.Kubernetes.NodeSelector = map[string]string{"role": "gpu"}
-	// configuration.Kubernetes.Tolerations = []*config.Toleration{
-	// 	{
-	// 		Key:      "nvidia.com/gpu",
-	// 		Operator: "Equal",
-	// 		Value:    "present",
-	// 		Effect:   "NoSchedule",
-	// 	},
-	// }
+	tolerations, ok := task.Tags["_TOLERATIONS"]
+	if ok {
+		// _TOLERATIONS expected format: "Key:role,Operator:Equal,Value:workflow,Effect:NoSchedule"
+		pairs := strings.Split(tolerations, ",")
+		res := make(map[string]string)
+		for _, pair := range pairs {
+			key, value, ok := strings.Cut(pair, ":")
+			if ok {
+				res[key] = value
+			}
+		}
+		expectedKeys := []string{"Key", "Operator", "Value", "Effect"}
+		for _, k := range expectedKeys {
+			if _, ok := res[k]; !ok {
+				return errorResponse(http.StatusInternalServerError, fmt.Sprintf("missing _TOLERATIONS key '%s': '%s'", k, tolerations))
+			}
+		}
+		configuration.Kubernetes.Tolerations = []*config.Toleration{
+			{
+				Key:      res["Key"],
+				Operator: res["Operator"],
+				Value:    res["Value"],
+				Effect:   res["Effect"],
+			},
+		}
+	}
 
 	return &proto.JobResponse{Code: http.StatusOK, Config: configuration, Task: task}, nil
 }
