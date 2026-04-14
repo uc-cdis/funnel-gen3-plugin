@@ -202,6 +202,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 			return errorResponse(http.StatusInternalServerError, fmt.Sprintf("invalid _NODE_SELECTOR format: '%s'", nodeSelector))
 		}
 		configuration.Kubernetes.NodeSelector = map[string]string{key: value}
+		shared.Logger.Info("Configuration", "NodeSelector", configuration.Kubernetes.NodeSelector)
 	}
 	tolerations, ok := task.Tags["_TOLERATIONS"]
 	if ok {
@@ -228,6 +229,7 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 				Effect:   res["Effect"],
 			},
 		}
+		shared.Logger.Info("Configuration", "Tolerations", configuration.Kubernetes.Tolerations)
 	}
 
 	return &proto.JobResponse{Code: http.StatusOK, Config: configuration, Task: task}, nil
