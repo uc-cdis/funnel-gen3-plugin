@@ -74,22 +74,22 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	url := "http://gen3-workflow-service/storage/setup"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return errorResponse(http.StatusInternalServerError, fmt.Sprintf("error creating HTTP request to '%s': %w", url, err))
+		return errorResponse(http.StatusInternalServerError, fmt.Errorf("error creating HTTP request to '%s': %w", url, err).Error())
 	}
 	req.Header.Add("Authorization", "bearer "+userJWT)
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return errorResponse(http.StatusInternalServerError, fmt.Sprintf("error making HTTP request to '%s': %w", url, err))
+		return errorResponse(http.StatusInternalServerError, fmt.Errorf("error making HTTP request to '%s': %w", url, err).Error())
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return errorResponse(int64(resp.StatusCode), fmt.Sprintf("http error from '%s': status code %d, body: %s", url, resp.StatusCode, string(body)))
+		return errorResponse(int64(resp.StatusCode), fmt.Errorf("http error from '%s': status code %d, body: %s", url, resp.StatusCode, string(body)).Error())
 	}
 	storageInfoResponse := new(StorageInfoResponse)
 	err = json.NewDecoder(resp.Body).Decode(storageInfoResponse)
 	if err != nil {
-		return errorResponse(http.StatusInternalServerError, fmt.Sprintf("could not parse '%s' response body: %w", url, err))
+		return errorResponse(http.StatusInternalServerError, fmt.Errorf("could not parse '%s' response body: %w", url, err).Error())
 	}
 	shared.Logger.Info("User's storage", "Bucket", storageInfoResponse.Bucket, "Region", storageInfoResponse.Region, "S3FilesFilesystemId", storageInfoResponse.S3FilesFilesystemId)
 
