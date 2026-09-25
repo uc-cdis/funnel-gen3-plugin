@@ -1,10 +1,8 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/gob"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -15,7 +13,6 @@ import (
 	"github.com/ohsu-comp-bio/funnel/config"
 	"github.com/ohsu-comp-bio/funnel/plugins/proto"
 	"github.com/ohsu-comp-bio/funnel/plugins/shared"
-	"github.com/uc-cdis/go-authutils/authutils"
 
 	"github.com/hashicorp/go-plugin"
 	"github.com/ohsu-comp-bio/funnel/tes"
@@ -23,57 +20,10 @@ import (
 
 type Authorize struct{}
 
-type AccessTokenResponse struct {
-	AccessToken string `json:"access_token"`
-}
-
 type StorageInfoResponse struct {
 	Bucket              string `json:"bucket"`
 	Region              string `json:"region"`
 	S3FilesFilesystemId string `json:"s3files_filesystem_id"`
-}
-
-func validateTokenAndExtractUserId(token string) (string, error) {
-	// This function was copied and adapted from arborist
-	// https://github.com/uc-cdis/arborist/blob/2025.05/arborist/token.go#L16
-
-	missingRequiredField := func(field string) error {
-		msg := fmt.Sprintf(
-			"failed to decode token: missing required field `%s`",
-			field,
-		)
-		return errors.New(msg)
-	}
-	fieldTypeError := func(field string) error {
-		msg := fmt.Sprintf(
-			"failed to decode token: field `%s` has wrong type",
-			field,
-		)
-		return errors.New(msg)
-	}
-
-	jwtApp := authutils.NewJWTApplication("http://fence-service/.well-known/jwks")
-	claims, err := jwtApp.Decode(token)
-	if err != nil {
-		return "", fmt.Errorf("error decoding token: %w", err)
-	}
-	scopes := []string{"openid"}
-	expected := &authutils.Expected{Scopes: scopes}
-
-	err = expected.Validate(claims)
-	if err != nil {
-		return "", fmt.Errorf("error decoding token: %w", err)
-	}
-	userIdInterface, exists := (*claims)["sub"]
-	if !exists {
-		return "", missingRequiredField("sub")
-	}
-	userId, casted := userIdInterface.(string)
-	if !casted {
-		return "", fieldTypeError("sub")
-	}
-
-	return userId, nil
 }
 
 func errorResponse(code int64, msg string) (*proto.JobResponse, error) {
@@ -104,15 +54,6 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	if !ok || S3Url == "" {
 		return errorResponse(http.StatusBadRequest, "S3Url is required in params")
 	}
-	OidcClientId, ok := params["OidcClientId"]
-	if !ok || OidcClientId == "" {
-		return errorResponse(http.StatusBadRequest, "OidcClientId is required in params")
-	}
-	OidcClientSecret, ok := params["OidcClientSecret"]
-	if !ok || OidcClientSecret == "" {
-		return errorResponse(http.StatusBadRequest, "OidcClientSecret is required in params")
-	}
-	shared.Logger.Info("Configuration", "S3Url", S3Url, "OidcClientId", OidcClientId)
 
 	// get the user's access token from the headers
 	authHeaders, ok := headers["authorization"]
@@ -127,10 +68,6 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	// validate the user's token and extract the user ID
 	userJWT := strings.TrimPrefix(authHeader, "Bearer ")
 	userJWT = strings.TrimPrefix(userJWT, "bearer ")
-	userId, err := validateTokenAndExtractUserId(userJWT)
-	if err != nil {
-		return errorResponse(http.StatusUnauthorized, fmt.Errorf("unable to parse token: %w", err).Error())
-	}
 
 	// get the S3 bucket and region for this user
 	httpClient := &http.Client{Timeout: 10 * time.Second}
@@ -156,36 +93,13 @@ func (a Authorize) PluginAction(params map[string]string, headers map[string]*pr
 	}
 	shared.Logger.Info("User's storage", "Bucket", storageInfoResponse.Bucket, "Region", storageInfoResponse.Region, "S3FilesFilesystemId", storageInfoResponse.S3FilesFilesystemId)
 
-	// exchange the OIDC client ID and secret for an access token
-	url = "http://fence-service/oauth2/token?grant_type=client_credentials&scope=openid%20user"
-	req, err = http.NewRequest("POST", url, nil)
-	if err != nil {
-		return errorResponse(http.StatusInternalServerError, fmt.Errorf("error creating HTTP request to '%s': %w", url, err).Error())
-	}
-	auth := base64.StdEncoding.EncodeToString([]byte(OidcClientId + ":" + OidcClientSecret))
-	req.Header.Add("Authorization", "Basic "+auth)
-	resp, err = httpClient.Do(req)
-	if err != nil {
-		return errorResponse(http.StatusInternalServerError, fmt.Errorf("error making HTTP request to '%s': %w", url, err).Error())
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return errorResponse(int64(resp.StatusCode), fmt.Errorf("http error from '%s': status code %d, body: %s", url, resp.StatusCode, string(body)).Error())
-	}
-	accessTokenResponse := new(AccessTokenResponse)
-	err = json.NewDecoder(resp.Body).Decode(accessTokenResponse)
-	if err != nil {
-		return errorResponse(http.StatusInternalServerError, fmt.Errorf("could not parse '%s' response body: %w", url, err).Error())
-	}
-
 	// generate and return the worker configuration
 	configuration.AmazonS3.Disabled = true
 	configuration.GenericS3 = []*config.GenericS3Storage{
 		{
 			Disabled: false,
 			Endpoint: S3Url,
-			Key:      accessTokenResponse.AccessToken + ";userId=" + userId,
+			Key:      "N/A",
 			Secret:   "N/A",
 			Bucket:   storageInfoResponse.Bucket,
 			Region:   storageInfoResponse.Region,
